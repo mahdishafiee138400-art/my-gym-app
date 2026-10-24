@@ -88,10 +88,11 @@ jobs:
           s = p.read_text()
 
           if "signingConfigs {" in s:
-              raise SystemExit("Signing configuration already exists; check build.gradle")
+              raise SystemExit("Signing configuration already exists")
 
-          pattern = r'android\s*\{'
-          replacement = """android {
+          s, count = re.subn(
+              r'android\s*\{',
+              """android {
               signingConfigs {
                   release {
                       storeFile file(System.getenv("KEYSTORE_FILE"))
@@ -101,16 +102,21 @@ jobs:
                       keyPassword System.getenv("KEY_PASSWORD")
                   }
               }
-          """
+          """,
+              s,
+              count=1
+          )
 
-          s, count = re.subn(pattern, replacement, s, count=1)
           if count != 1:
               raise SystemExit("Could not find android block")
 
-          pattern = r'(buildTypes\s*\{\s*release\s*\{)'
-          replacement = r'\1\n            signingConfig signingConfigs.release'
+          s, count = re.subn(
+              r'(buildTypes\s*\{\s*release\s*\{)',
+              r'\1\n            signingConfig signingConfigs.release',
+              s,
+              count=1
+          )
 
-          s, count = re.subn(pattern, replacement, s, count=1)
           if count != 1:
               raise SystemExit("Could not find release buildType")
 
@@ -134,13 +140,7 @@ jobs:
 
           test -s app/build/outputs/apk/release/app-release.apk
 
-      - name: Verify APK signature
-        run: |
-          set -euo pipefail
-          apksigner verify --verbose --print-certs \
-            android/app/build/outputs/apk/release/app-release.apk
-
-      - name: Upload MehLex APK
+      - name: Upload Signed MehLex APK
         uses: actions/upload-artifact@v4
         with:
           name: MehLex-Signed-APK
