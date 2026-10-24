@@ -1,5 +1,5 @@
 
-name: Build MehLex Android APK
+name: Build MehLex Android APk
 
 on:
   push:
