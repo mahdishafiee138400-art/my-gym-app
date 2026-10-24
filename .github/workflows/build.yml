@@ -1,5 +1,5 @@
 
-name: Build MehLex Android APk
+name: Build MehLex Android APK
 
 on:
   push:
@@ -75,7 +75,7 @@ jobs:
                   release {
                       storeFile file(System.getenv("KEYSTORE_FILE"))
                       storePassword System.getenv("KEY_STORE_PASSWORD")
-                      keyAlias System.getenv("KEY_ALIAS")
+                      keyAlias "mehlex"
                       keyPassword System.getenv("KEY_PASSWORD")
                   }
               }
@@ -92,12 +92,11 @@ jobs:
         env:
           KEYSTORE_FILE: ${{ github.workspace }}/my-release-key.jks
           KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -euo pipefail
+
           test -n "$KEY_STORE_PASSWORD"
-          test -n "$KEY_ALIAS"
           test -n "$KEY_PASSWORD"
 
           cd android
