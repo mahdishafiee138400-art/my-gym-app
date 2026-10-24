@@ -28,14 +28,14 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Prepare web files and icon
+      - name: Prepare web files
         run: |
           set -euo pipefail
-          mkdir -p www assets
           test -f index.html
           test -f icon.png
           test -f sw.js
           test -f manifest.webmanifest
+          mkdir -p www assets
           cp index.html sw.js manifest.webmanifest icon.png www/
           cp icon.png assets/icon.png
 
@@ -57,40 +57,69 @@ jobs:
           npx capacitor-assets generate --android
           npx cap sync android
 
-      - name: Decode Keystore
+      - name: Decode and verify signing key
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
         run: |
           set -euo pipefail
+
           test -n "$SIGNING_KEY"
-          printf '%s' "$SIGNING_KEY" | base64 --decode > "$GITHUB_WORKSPACE/my-release-key.jks"
-          test -s "$GITHUB_WORKSPACE/my-release-key.jks"
+          test -n "$KEY_STORE_PASSWORD"
+
+          printf '%s' "$SIGNING_KEY" | base64 --decode \
+            > "$GITHUB_WORKSPACE/mehlex-release.p12"
+
+          test -s "$GITHUB_WORKSPACE/mehlex-release.p12"
+
+          keytool -list \
+            -keystore "$GITHUB_WORKSPACE/mehlex-release.p12" \
+            -storetype PKCS12 \
+            -storepass "$KEY_STORE_PASSWORD" \
+            -alias mehlex
 
       - name: Configure Gradle signing
         run: |
-          cat >> android/app/build.gradle <<'GRADLE'
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
 
-          android {
+          p = Path("android/app/build.gradle")
+          s = p.read_text()
+
+          if "signingConfigs {" in s:
+              raise SystemExit("Signing configuration already exists; check build.gradle")
+
+          pattern = r'android\s*\{'
+          replacement = """android {
               signingConfigs {
                   release {
                       storeFile file(System.getenv("KEYSTORE_FILE"))
+                      storeType "PKCS12"
                       storePassword System.getenv("KEY_STORE_PASSWORD")
                       keyAlias "mehlex"
                       keyPassword System.getenv("KEY_PASSWORD")
                   }
               }
+          """
 
-              buildTypes {
-                  release {
-                      signingConfig signingConfigs.release
-                  }
-              }
-          }
-          GRADLE
+          s, count = re.subn(pattern, replacement, s, count=1)
+          if count != 1:
+              raise SystemExit("Could not find android block")
+
+          pattern = r'(buildTypes\s*\{\s*release\s*\{)'
+          replacement = r'\1\n            signingConfig signingConfigs.release'
+
+          s, count = re.subn(pattern, replacement, s, count=1)
+          if count != 1:
+              raise SystemExit("Could not find release buildType")
+
+          p.write_text(s)
+          PY
 
       - name: Build signed Release APK
         env:
-          KEYSTORE_FILE: ${{ github.workspace }}/my-release-key.jks
+          KEYSTORE_FILE: ${{ github.workspace }}/mehlex-release.p12
           KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
@@ -105,7 +134,13 @@ jobs:
 
           test -s app/build/outputs/apk/release/app-release.apk
 
-      - name: Upload Signed MehLex APK
+      - name: Verify APK signature
+        run: |
+          set -euo pipefail
+          apksigner verify --verbose --print-certs \
+            android/app/build/outputs/apk/release/app-release.apk
+
+      - name: Upload MehLex APK
         uses: actions/upload-artifact@v4
         with:
           name: MehLex-Signed-APK
