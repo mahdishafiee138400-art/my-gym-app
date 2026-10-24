@@ -1,5 +1,4 @@
-
-name: Build MehLex Android APK
+Name: Build MehLex Android APK
 
 on:
   push:
@@ -53,16 +52,34 @@ jobs:
       - name: Generate Android icons
         run: npx capacitor-assets generate --android
 
-      - name: Build APK
+      # استخراج فایل کلید از روی Secret گیت‌هاب
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > my-release-key.jks
+
+      # ساخت نسخه Release
+      - name: Build Release APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew --no-daemon clean assembleDebug
+          ./gradlew --no-daemon clean assembleRelease
 
-      - name: Upload MehLex APK
+      # امضا کردن نسخه Release با کلید اختصاصی برای کافه بازار
+      - name: Sign Release APK
+        run: |
+          $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
+            --ks my-release-key.jks \
+            --ks-pass pass:${{ secrets.KEY_STORE_PASSWORD }} \
+            --ks-key-alias ${{ secrets.KEY_ALIAS }} \
+            --key-pass pass:${{ secrets.KEY_PASSWORD }} \
+            --out MehLex-Release-Signed.apk \
+            android/app/build/outputs/apk/release/app-release-unsigned.apk
+
+      # آپلود فایل نهایی امضا شده
+      - name: Upload Signed MehLex APK
         uses: actions/upload-artifact@v4
         with:
-          name: MehLex-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: MehLex-Signed-APK
+          path: MehLex-Release-Signed.apk
           if-no-files-found: error
           retention-days: 7
